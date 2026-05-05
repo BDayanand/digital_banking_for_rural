@@ -193,7 +193,7 @@ router.get("/scheduled-transactions", async (req, res) => {
 
     const txns = await ScheduledTransaction.find(filter)
       .populate("user_id", "name accountNumber upiId phoneNumber")
-      .sort({ auto_process_at: 1 })
+      .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit));
 

@@ -11,8 +11,7 @@ import {
   getUserTransactions,
   freezeUser,
   unfreezeUser,
-  addBalanceToUser,
-  seedTestUsers
+  addBalanceToUser
 } from "../api/user.api";
 
 export default function Users() {
@@ -21,14 +20,22 @@ export default function Users() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [allUsers, setAllUsers] = useState([]);
   const [userTransactions, setUserTransactions] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showAddBalance, setShowAddBalance] = useState(false);
-  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
-    loadUsers();
-  }, [page]);
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (debouncedSearch) {
+      setPage(1);
+    }
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (selectedUser) {
@@ -43,51 +50,58 @@ export default function Users() {
     } catch (err) {
       console.error("Failed to load user transactions", err);
     } finally {
-      // setLoading(false);
     }
   };
 
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      const res = await getAllUsers(page, 10);
-      setUsers(res.data.users);
-      setTotalPages(res.data.totalPages);
-    } catch (err) {
-      console.error("Failed to load users", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        if (debouncedSearch) {
+          const res = await getAllUsers(1, 500);
+          setAllUsers(res.data.users);
+        } else {
+          const res = await getAllUsers(page, 10);
+          setUsers(res.data.users);
+          setTotalPages(res.data.totalPages);
+        }
+      } catch (err) {
+        console.error("Failed to load users", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, [page, debouncedSearch]);
 
   const handleFreeze = async (userId) => {
     try {
       await freezeUser(userId);
-      loadUsers();
+      if (debouncedSearch) {
+        const res = await getAllUsers(1, 500);
+        setAllUsers(res.data.users);
+      } else {
+        const res = await getAllUsers(page, 10);
+        setUsers(res.data.users);
+        setTotalPages(res.data.totalPages);
+      }
       setSelectedUser(null);
     } catch (err) {
       console.error("Freeze failed", err);
     }
   };
 
-  const handleSeedUsers = async () => {
-    try {
-      setSeeding(true);
-      const res = await seedTestUsers();
-      alert(res.data.message);
-      loadUsers();
-    } catch (err) {
-      console.error("Seed failed", err);
-      alert("Failed to seed test users");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const handleUnfreeze = async (userId) => {
     try {
       await unfreezeUser(userId);
-      loadUsers();
+      if (debouncedSearch) {
+        const res = await getAllUsers(1, 500);
+        setAllUsers(res.data.users);
+      } else {
+        const res = await getAllUsers(page, 10);
+        setUsers(res.data.users);
+        setTotalPages(res.data.totalPages);
+      }
       setSelectedUser(null);
     } catch (err) {
       console.error("Unfreeze failed", err);
@@ -96,35 +110,26 @@ export default function Users() {
 
 
   const filteredUsers = useMemo(() => {
-    if (!search) return users;
-    return users.filter(user =>
+    if (!debouncedSearch) return users;
+    return allUsers.filter(user =>
       [
         user.name,
         user._id,
-        user.email,
+        user.phoneNumber,
         user.accountNumber
       ]
         .join(" ")
         .toLowerCase()
-        .includes(search.toLowerCase())
+        .includes(debouncedSearch.toLowerCase())
     );
-  }, [search, users]);
+  }, [debouncedSearch, users, allUsers]);
 
   if (loading) return <div>Loading users...</div>;
 
   return (
     <>
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-1">
-        <h1 className="text-2xl font-semibold">User Management</h1>
-        <button
-          onClick={handleSeedUsers}
-          disabled={seeding}
-          className="px-4 py-2 rounded-xl bg-blue-600 text-white font-medium disabled:opacity-50"
-        >
-          {seeding ? "Seeding..." : "🧪 Seed Test Users"}
-        </button>
-      </div>
+      <h1 className="text-2xl font-semibold mb-1">User Management</h1>
       <p className="text-muted mb-6">Manage and monitor user accounts</p>
 
       {/* SEARCH */}
@@ -134,11 +139,17 @@ export default function Users() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, ID, or email..."
+            placeholder="Search by name, phone, account..."
             className="w-full pl-11 pr-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500"
           />
         </div>
       </div>
+
+      {debouncedSearch && (
+        <p className="text-sm text-muted mb-4">
+          Found {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""}
+        </p>
+      )}
 
       {/* TABLE */}
       <div className="bg-card dark:bg-darkcard rounded-xl border overflow-x-auto">
@@ -201,11 +212,56 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION */}
+      {!debouncedSearch && totalPages > 1 && (
+        <div className="flex justify-between items-center mt-4">
+          <p className="text-sm text-muted">
+            Showing page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => setPage(i + 1)}
+                className={`px-3 py-2 rounded-lg border ${
+                  page === i + 1
+                    ? "bg-green-600 text-white border-green-600"
+                    : "hover:bg-gray-50"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {showAddBalance && selectedUser && (
         <AddBalanceModal
           user={selectedUser}
           onClose={() => setShowAddBalance(false)}
-          onSuccess={loadUsers}
+          onSuccess={() => {
+            if (debouncedSearch) {
+              getAllUsers(1, 500).then(res => setAllUsers(res.data.users));
+            } else {
+              getAllUsers(page, 10).then(res => { setUsers(res.data.users); setTotalPages(res.data.totalPages); });
+            }
+          }}
         />
       )}
 

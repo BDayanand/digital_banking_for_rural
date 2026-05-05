@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Clock, Check, X, AlertTriangle, Timer } from "lucide-react";
+import { Clock, Check, X, Timer } from "lucide-react";
 import { getScheduledTransactions, processScheduledTransaction } from "../api/transaction.api";
 
 function useCountdown(autoProcessAt, enabled = false) {
@@ -68,24 +68,35 @@ function CountdownCell({ autoProcessAt }) {
 
 export default function ScheduledTxns() {
   const [txns, setTxns] = useState([]);
+  const [allTxns, setAllTxns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
-  const [stats, setStats] = useState({ PENDING: 0, PROCESSING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 });
+  const [stats, setStats] = useState({ PENDING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 });
   const [processingId, setProcessingId] = useState(null);
 
   useEffect(() => {
     loadScheduled();
-  }, [filter]);
+  }, []);
+
+  useEffect(() => {
+    const filtered = allTxns
+      .filter(t => !filter || t.status === filter)
+      .sort((a, b) =>
+        new Date(b.createdAt || b.auto_process_at || 0) -
+        new Date(a.createdAt || a.auto_process_at || 0)
+      );
+    setTxns(filtered);
+  }, [filter, allTxns]);
 
   const loadScheduled = async () => {
     try {
       setLoading(true);
-      const res = await getScheduledTransactions(1, 200, filter || undefined);
-      setTxns(res.data.transactions || []);
+      const res = await getScheduledTransactions(1, 500, undefined);
+      const data = res.data.transactions || [];
+      setAllTxns(data);
       
-      const allTxns = res.data.transactions || [];
-      const newStats = { PENDING: 0, PROCESSING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
-      allTxns.forEach(t => { if (newStats[t.status] !== undefined) newStats[t.status]++; });
+      const newStats = { PENDING: 0, COMPLETED: 0, CANCELLED: 0, FAILED: 0 };
+      data.forEach(t => { if (newStats[t.status] !== undefined) newStats[t.status]++; });
       setStats(newStats);
     } catch (err) {
       console.error("Load scheduled error", err);
@@ -127,7 +138,7 @@ export default function ScheduledTxns() {
 
       {/* Filter */}
       <div className="flex gap-2 mb-6">
-        {["", "PENDING", "PROCESSING", "COMPLETED", "CANCELLED", "FAILED"].map(status => (
+        {["", "PENDING", "COMPLETED", "CANCELLED", "FAILED"].map(status => (
           <button
             key={status || "all"}
             onClick={() => setFilter(status)}
@@ -151,21 +162,21 @@ export default function ScheduledTxns() {
             </div>
           </div>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="text-blue-600" size={24} />
-            <div>
-              <div className="text-2xl font-bold">{stats.PROCESSING}</div>
-              <div className="text-sm text-blue-700">Processing</div>
-            </div>
-          </div>
-        </div>
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <Check className="text-green-600" size={24} />
             <div>
               <div className="text-2xl font-bold">{stats.COMPLETED}</div>
               <div className="text-sm text-green-700">Completed</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <X className="text-red-600" size={24} />
+            <div>
+              <div className="text-2xl font-bold">{stats.CANCELLED}</div>
+              <div className="text-sm text-red-700">Cancelled</div>
             </div>
           </div>
         </div>

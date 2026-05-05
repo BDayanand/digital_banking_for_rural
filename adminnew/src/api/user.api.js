@@ -20,6 +20,3 @@ export const bypassCooldown = (userId) =>
 
 export const getDeviceHistory = (userId) =>
   api.get(`/users/admin/device-history/${userId}`);
-
-export const seedTestUsers = () =>
-  api.post(`/users/seed-test-users`);

@@ -211,8 +211,6 @@ export default function PayMobile({ navigation }) {
         placeholderTextColor="#999"
         style={styles.search}
         onChangeText={search}
-        keyboardType="phone-pad"
-        maxLength={10}
         value={searchText}
       />
 

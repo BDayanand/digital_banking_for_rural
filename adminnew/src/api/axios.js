@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: "https://digital-banking-for-rural.onrender.com/api",
+  // baseURL: "http://localhost:5000/api",
   // baseURL: "http://10.121.134.159:5000/api",
   // baseURL: "https://grambankapi.onrender.com/api",
   headers: {
