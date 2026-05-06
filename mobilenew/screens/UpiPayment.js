@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert
+  Alert,
+  ActivityIndicator
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
@@ -24,6 +25,7 @@ export default function UPIPaymentScreen({ route, navigation }) {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
     loadPin();
@@ -95,6 +97,8 @@ export default function UPIPaymentScreen({ route, navigation }) {
     }
 
     try {
+      setLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const token = await AsyncStorage.getItem("token");
       const res = await axios.post(
         `${api_url}/txns/upi/send`,
@@ -114,6 +118,8 @@ export default function UPIPaymentScreen({ route, navigation }) {
       }
     } catch (e) {
       Alert.alert("Transaction Failed", e.response?.data?.error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -225,8 +231,8 @@ export default function UPIPaymentScreen({ route, navigation }) {
               onChangeText={setUpiPin}
             />
 
-            <TouchableOpacity style={styles.primary} onPress={handlePinSubmit}>
-              <Text style={styles.primaryText}>Continue</Text>
+            <TouchableOpacity style={styles.primary} onPress={handlePinSubmit} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Continue</Text>}
             </TouchableOpacity>
           </View>
         </View>

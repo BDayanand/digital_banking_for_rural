@@ -60,6 +60,11 @@ app.get("/", (req, res) => {
 
 // ✅ Cron Job: Process scheduled transactions every minute
 cron.schedule("* * * * *", async () => {
+  if (mongoose.connection.readyState !== 1) {
+    console.log("[CRON] Skipped — MongoDB not connected");
+    return;
+  }
+
   try {
     const ScheduledTransaction = require("./models/ScheduledTransaction");
     const User = require("./models/User");

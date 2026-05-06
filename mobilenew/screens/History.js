@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import * as Contacts from "expo-contacts";
 import { api_url } from "../config";
 import BottomToolbar from "./bottomToolBar";
 import { getUnsyncedTransactions } from "../utilitis/database";
@@ -18,10 +19,46 @@ import { checkConnection } from "../utilitis/network";
 const History = ({ navigation }) => {
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [contactMap, setContactMap] = useState({});
 
   useEffect(() => {
+    loadContacts();
     loadHistory();
   }, []);
+
+  const loadContacts = async () => {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status === "granted") {
+        const { data } = await Contacts.getContactsAsync({
+          fields: [Contacts.Fields.PhoneNumbers],
+        });
+        const map = {};
+        data.forEach(contact => {
+          if (contact.phoneNumbers) {
+            contact.phoneNumbers.forEach(phone => {
+              const normalized = phone.number.replace(/\s/g, "").replace("+91", "");
+              if (normalized.length >= 10) {
+                map[normalized.slice(-10)] = contact.name;
+              }
+            });
+          }
+        });
+        setContactMap(map);
+      }
+    } catch (err) {
+      console.log("Contacts error:", err);
+    }
+  };
+
+  const resolveName = (phone, dbName, fallback) => {
+    if (dbName && dbName !== "Account") return dbName;
+    if (phone && contactMap[phone]) return contactMap[phone];
+    if (fallback && typeof fallback === "string" && fallback.includes("@")) {
+      return fallback.split("@")[0];
+    }
+    return fallback || "Account";
+  };
 
   const loadHistory = async () => {
     try {
@@ -45,7 +82,9 @@ const History = ({ navigation }) => {
         type: t.type === 'bank_transfer' ? 'DEBIT' : 'DEBIT',
         is_offline: true,
         is_synced: t.is_synced === 1,
-        status: t.status
+        status: t.status,
+        to_phone: t.data?.phone || null,
+        beneficiary_name: t.data?.beneficiary_name || null,
       }))];
 
       // Deduplicate: prefer server txn (has latest status), remove local if server exists
@@ -77,7 +116,9 @@ const History = ({ navigation }) => {
         type: 'DEBIT',
         is_offline: true,
         is_synced: t.is_synced === 1,
-        status: t.status
+        status: t.status,
+        to_phone: t.data?.phone || null,
+        beneficiary_name: t.data?.beneficiary_name || null,
       })));
     } finally {
       setLoading(false);
@@ -99,6 +140,14 @@ const History = ({ navigation }) => {
     const isSynced = item?.is_synced;
     const isScheduled = item?.is_scheduled || item?.txn_type === "scheduled";
     const scheduledStatus = item?.status;
+
+    const displayName = isCredit
+      ? resolveName(item.from_phone, item.from_name, item.from_account || "Account")
+      : resolveName(item.to_phone, item.beneficiary_name || item.to_name, item.to_account || item.to_upi || "Account");
+
+    const displayText = isCredit
+      ? `Received from ${displayName} • ₹${item.amount}`
+      : `Paid to ${displayName} • ₹${item.amount}`;
 
     const handleReport = () => {
       Alert.alert(
@@ -141,7 +190,7 @@ const History = ({ navigation }) => {
           <View style={{ flex: 1 }}>
             <View style={styles.row}>
               <Text style={styles.amountText}>
-                {isCredit ? "Received" : "Paid"} • ₹{item.amount}
+                {displayText}
               </Text>
               {isScheduled && statusInfo && (
                 <View style={[styles.syncTag, { backgroundColor: statusInfo.color }]}>
@@ -258,9 +307,11 @@ const styles = StyleSheet.create({
   },
 
   amountText: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "bold",
     color: "#000",
+    flex: 1,
+    flexWrap: "wrap",
   },
 
   txnId: {

@@ -92,6 +92,7 @@ const Transaction = ({ navigation }) => {
 
     try {
       setLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const token = await AsyncStorage.getItem("token");
 
       const res = await axios.post(

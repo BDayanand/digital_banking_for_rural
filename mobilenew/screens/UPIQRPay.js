@@ -121,6 +121,7 @@ export default function UPIQRPay({ navigation }) {
     const makePaymentWithoutOtp = async () => {
         try {
             setLoading(true);
+            await new Promise(resolve => setTimeout(resolve, 1000));
             const token = await AsyncStorage.getItem("token");
 
             await axios.post(
@@ -134,8 +135,9 @@ export default function UPIQRPay({ navigation }) {
             ]);
         } catch (e) {
             Alert.alert("Failed", e.response?.data?.error || "Payment failed");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     // ---------- OTP SEND ----------

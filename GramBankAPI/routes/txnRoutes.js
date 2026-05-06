@@ -591,6 +591,7 @@ router.post("/upi/send", auth, async (req, res) => {
         user_id: user._id,
         txn_id: `UPI-SCHED-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         to_upi: upiId,
+        beneficiary_name: receiver ? receiver.name : null,
         amount: amt,
         balance_before: user.balance,
         balance_after: +(user.balance - amt).toFixed(2),
@@ -653,6 +654,7 @@ async function processInstantUPI(user, receiver, upiId, amt, phoneToCheck, res) 
     txn_id: txnId,
     user_id: user._id,
     to_upi: upiId,
+    beneficiary_name: receiver ? receiver.name : null,
     amount: amt,
     balance_before,
     balance_after,
@@ -715,16 +717,67 @@ router.get("/history", auth, async (req, res) => {
       ScheduledTransaction.find({ user_id: user._id })
     ]);
 
-    // Add a flag to पहचान type (optional but useful in frontend)
-    // Include all scheduled txns except completed ones (they already have a Transaction record)
+    // Collect unique account numbers and UPI IDs
+    const accountNumbers = new Set();
+    const upiIds = new Set();
+    txns.forEach(t => {
+      if (t.type === "CREDIT" && t.from_account) accountNumbers.add(t.from_account);
+      if (t.type === "DEBIT") {
+        if (t.to_account) accountNumbers.add(t.to_account);
+        if (t.to_upi) upiIds.add(t.to_upi);
+      }
+    });
+
+    const usersByAccount = {};
+    const usersByUpi = {};
+    const queries = [];
+
+    if (accountNumbers.size > 0) {
+      queries.push(
+        User.find({ accountNumber: { $in: [...accountNumbers] } }, "accountNumber name phoneNumber").then(users => {
+          users.forEach(u => { usersByAccount[u.accountNumber.toLowerCase()] = { name: u.name, phone: u.phoneNumber }; });
+        })
+      );
+    }
+
+    if (upiIds.size > 0) {
+      queries.push(
+        User.find({}, "upiId name phoneNumber").then(users => {
+          users.forEach(u => {
+            if (u.upiId) usersByUpi[u.upiId.toLowerCase()] = { name: u.name, phone: u.phoneNumber };
+          });
+        })
+      );
+    }
+
+    await Promise.all(queries);
+
+    const formattedTxns = txns.map(t => {
+      const obj = t.toObject();
+      if (t.type === "CREDIT" && t.from_account && usersByAccount[t.from_account.toLowerCase()]) {
+        obj.from_name = usersByAccount[t.from_account.toLowerCase()].name;
+        obj.from_phone = usersByAccount[t.from_account.toLowerCase()].phone;
+      }
+      if (t.type === "DEBIT") {
+        let userMatch = null;
+        if (t.to_account && usersByAccount[t.to_account.toLowerCase()]) {
+          userMatch = usersByAccount[t.to_account.toLowerCase()];
+        } else if (t.to_upi && usersByUpi[t.to_upi.toLowerCase()]) {
+          userMatch = usersByUpi[t.to_upi.toLowerCase()];
+        }
+        if (userMatch) {
+          obj.to_name = userMatch.name;
+          obj.to_phone = userMatch.phone;
+          if (!obj.beneficiary_name) obj.beneficiary_name = userMatch.name;
+        }
+      }
+      obj.txn_type = "transaction";
+      return obj;
+    });
+
     const pendingScheduled = scheduledTxns.filter(t =>
       t.status === "PENDING" || t.status === "APPROVED_BY_ADMIN" || t.status === "PROCESSING" || t.status === "CANCELLED" || t.status === "FAILED"
     );
-
-    const formattedTxns = txns.map(t => ({
-      ...t.toObject(),
-      txn_type: "transaction"
-    }));
 
     const formattedScheduled = pendingScheduled.map(t => ({
       ...t.toObject(),
@@ -732,7 +785,6 @@ router.get("/history", auth, async (req, res) => {
       is_scheduled: true,
     }));
 
-    // Merge + sort by date
     const combined = [...formattedTxns, ...formattedScheduled]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 200);

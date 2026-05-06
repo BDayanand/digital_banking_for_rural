@@ -26,10 +26,19 @@ const UPIRequestsScreen = ({ navigation }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [warningModalVisible, setWarningModalVisible] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [upiPin, setUpiPin] = useState("");
+  const [storedPin, setStoredPin] = useState(null);
 
   useEffect(() => {
     loadRequests();
+    loadPin();
   }, []);
+
+  const loadPin = async () => {
+    const pin = await AsyncStorage.getItem("upiPin");
+    if (pin) setStoredPin(pin);
+  };
 
   const loadRequests = async () => {
     try {
@@ -51,25 +60,49 @@ const UPIRequestsScreen = ({ navigation }) => {
       setWarningModalVisible(true);
       return;
     }
-    proceedWithApproval(request);
+    setSelectedRequest(request);
+    setPinModalVisible(true);
   };
 
-  const proceedWithApproval = async (request) => {
+  const handlePinSubmit = async () => {
+    if (!storedPin) {
+      if (upiPin.length < 4) {
+        Alert.alert("UPI PIN must be 4 digits");
+        return;
+      }
+      await AsyncStorage.setItem("upiPin", upiPin);
+      setStoredPin(upiPin);
+      Alert.alert("PIN Saved");
+    } else {
+      if (upiPin !== storedPin) {
+        Alert.alert("Wrong PIN", "Try again");
+        return;
+      }
+    }
+
+    setPinModalVisible(false);
+    setUpiPin("");
+
+    const req = selectedRequest;
+    setSelectedRequest(null);
+
+    if (Number(req.amount) < 10000) {
+      proceedWithApproval(req);
+    } else {
+      await sendOtpForApproval(req);
+    }
+  };
+
+  const sendOtpForApproval = async (request) => {
     try {
       setActionLoading(true);
       const token = await AsyncStorage.getItem("token");
-
-      if (Number(request.amount) < 10000) {
-        await submitApprovalWithoutOtp(request);
-      } else {
-        await axios.post(
-          `${api_url}/upi-collect/send-otp`,
-          { request_id: request.request_id },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setSelectedRequest(request);
-        setOtpModalVisible(true);
-      }
+      await axios.post(
+        `${api_url}/upi-collect/send-otp`,
+        { request_id: request.request_id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOtpModalVisible(true);
     } catch (err) {
       Alert.alert("Error", err.response?.data?.error || "Failed to send OTP");
     } finally {
@@ -77,7 +110,7 @@ const UPIRequestsScreen = ({ navigation }) => {
     }
   };
 
-  const submitApprovalWithoutOtp = async (request) => {
+  const proceedWithApproval = async (request) => {
     try {
       setActionLoading(true);
       const token = await AsyncStorage.getItem("token");
@@ -91,11 +124,13 @@ const UPIRequestsScreen = ({ navigation }) => {
         request.intent === "SEND" ? "Money Sent" : "Request Approved",
         res.data.message
       );
+      setSelectedRequest(null);
       loadRequests();
     } catch (err) {
       Alert.alert("Error", err.response?.data?.error || "Transaction failed");
     } finally {
       setActionLoading(false);
+      setSelectedRequest(null);
     }
   };
 
@@ -120,6 +155,7 @@ const UPIRequestsScreen = ({ navigation }) => {
       );
       setOtpModalVisible(false);
       setOtp("");
+      setSelectedRequest(null);
       loadRequests();
     } catch (err) {
       Alert.alert("Error", err.response?.data?.error || "Transaction failed");
@@ -170,7 +206,7 @@ const UPIRequestsScreen = ({ navigation }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setWarningModalVisible(false);
-      proceedWithApproval(selectedRequest);
+      setPinModalVisible(true);
     } catch (err) {
       Alert.alert("Error", "Failed to acknowledge warning");
     }
@@ -320,6 +356,51 @@ const UPIRequestsScreen = ({ navigation }) => {
         </View>
       </Modal>
 
+      <Modal visible={pinModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.otpModal}>
+            <Text style={styles.otpModalTitle}>
+              {storedPin ? "Enter UPI PIN" : "Set UPI PIN"}
+            </Text>
+            <Text style={styles.otpModalSubtitle}>
+              {storedPin ? "Enter your PIN to authorize this payment" : "Create a 4-digit UPI PIN"}
+            </Text>
+            <TextInput
+              style={styles.otpInput}
+              keyboardType="numeric"
+              secureTextEntry
+              maxLength={4}
+              placeholder="****"
+              value={upiPin}
+              onChangeText={setUpiPin}
+              placeholderTextColor="#9CA3AF"
+            />
+            <View style={styles.otpModalActions}>
+              <TouchableOpacity
+                style={styles.otpCancelBtn}
+                onPress={() => {
+                  setPinModalVisible(false);
+                  setUpiPin("");
+                }}
+              >
+                <Text style={styles.otpCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.otpConfirmBtn, actionLoading && styles.disabled]}
+                onPress={handlePinSubmit}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.otpConfirmText}>Continue</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={otpModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.otpModal}>
@@ -342,6 +423,7 @@ const UPIRequestsScreen = ({ navigation }) => {
                 onPress={() => {
                   setOtpModalVisible(false);
                   setOtp("");
+                  setSelectedRequest(null);
                 }}
               >
                 <Text style={styles.otpCancelText}>Cancel</Text>
