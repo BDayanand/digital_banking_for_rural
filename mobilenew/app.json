@@ -31,6 +31,9 @@
         "projectId": "0f8cffb1-d30a-4dd9-84d7-add909946a37"
       }
     },
-    "owner": "chandu_k_yadav"
+    "owner": "chandu_k_yadav",
+    "plugins": [
+      "expo-sqlite"
+    ]
   }
 }

@@ -20,7 +20,7 @@
     "expo-contacts": "~15.0.11",
     "expo-image-picker": "~17.0.8",
     "expo-local-authentication": "~17.0.7",
-    "expo-sqlite": "^55.0.15",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.8",
     "react": "19.1.0",
     "react-dom": "19.1.0",
